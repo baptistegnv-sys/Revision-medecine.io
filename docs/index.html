@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Révisions — Méthode des J</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f172a">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0f172a; color: #f1f5f9; min-height: 100vh; padding: 20px;
+    max-width: 480px; margin: 0 auto;
+  }
+  h1 { font-size: 1.3rem; margin-bottom: 4px; }
+  .sub { color: #64748b; font-size: 0.85rem; margin-bottom: 20px; }
+  #install-banner { display: none; margin-bottom: 16px; padding: 12px; background: #1e293b;
+    border-radius: 12px; font-size: 0.8rem; color: #cbd5e1; }
+  .card { background: #1e293b; border-radius: 14px; padding: 16px; margin-bottom: 16px; }
+  label { display: block; font-size: 0.8rem; color: #94a3b8; margin-top: 10px; margin-bottom: 4px; }
+  input, textarea { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #334155;
+    background: #0f172a; color: #f1f5f9; font-size: 0.9rem; }
+  textarea { resize: vertical; min-height: 60px; }
+  button { margin-top: 14px; padding: 12px 20px; border: none; border-radius: 10px;
+    background: #38bdf8; color: #0f172a; font-weight: 600; font-size: 0.9rem; cursor: pointer; width: 100%; }
+  button:disabled { opacity: 0.5; }
+  #status { margin-top: 10px; font-size: 0.8rem; color: #64748b; }
+  h2 { font-size: 1rem; margin: 24px 0 10px; }
+  .matiere-groupe { margin-bottom: 18px; }
+  .matiere-titre { font-size: 0.85rem; font-weight: 600; color: #38bdf8; margin-bottom: 8px;
+    display: flex; justify-content: space-between; }
+  .matiere-titre .count { color: #64748b; font-weight: 400; }
+  .fiche { background: #1e293b; border-radius: 12px; padding: 12px 14px; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center; text-decoration: none; color: inherit; }
+  .fiche-info .titre { font-weight: 600; font-size: 0.9rem; }
+  .fiche-badge { font-size: 0.7rem; background: #0f172a; padding: 4px 8px; border-radius: 6px;
+    color: #94a3b8; white-space: nowrap; }
+  .fiche-badge.maitrisee { background: #16a34a; color: white; }
+  .empty { color: #64748b; font-size: 0.85rem; text-align: center; padding: 20px 0; }
+</style>
+</head>
+<body>
+  <h1>📚 Révisions — Méthode des J</h1>
+  <div class="sub">Fiche ajoutée aujourd'hui → rappels automatiques à J1, J3, J7, J15, J30, J60, J90.</div>
+  <p><a href="calendrier.html" style="color:#38bdf8; font-size:0.85rem; text-decoration:none;">📅 Voir le calendrier des révisions</a></p>
+
+  <div id="install-banner">
+    📲 Pour recevoir les notifications sur iPhone, ajoute d'abord cette app à ton écran d'accueil :
+    <strong>Partager → "Sur l'écran d'accueil"</strong>.
+  </div>
+
+  <div class="card">
+    <button id="subscribe-btn">🔔 Activer les notifications</button>
+    <div id="status"></div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Ajouter une fiche</h2>
+    <label>Titre *</label>
+    <input id="f-titre" placeholder="Ex : Physiologie rénale — filtration glomérulaire">
+    <label>Matière</label>
+    <input id="f-matiere" placeholder="Ex : Physiologie">
+    <label>Lien (Drive, Notion, PDF...)</label>
+    <input id="f-url" placeholder="https://...">
+    <label>Ou notes directes</label>
+    <textarea id="f-contenu" placeholder="Résumé, points clés..."></textarea>
+    <button id="add-btn">➕ Créer la fiche et programmer les révisions</button>
+  </div>
+
+  <h2>Fiches en cours</h2>
+  <div id="fiches-list"><div class="empty">Chargement...</div></div>
+
+<script>
+  // ⚠️ À REMPLIR après déploiement de l'Apps Script (voir README) :
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx0UEPG7ciaJs_HtIH9P7eJYzfR4YpEeU_0q_9ejJUvjmTHBO9QD6ce1jn8lcaW6wDM8g/exec";
+  const VAPID_PUBLIC_KEY = "BLWZW464GkHUGmO88OwNVywGSadDpxerf07zr8GVIiEmwHYM7TbZNvsoAPdTocDYLQPUuNe7_ZgrTzjqGw9Aji0";
+
+  const statusEl = document.getElementById('status');
+  const subBtn = document.getElementById('subscribe-btn');
+  const installBanner = document.getElementById('install-banner');
+
+  function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = atob(base64);
+    return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+  }
+  function isIOS() { return /iphone|ipad|ipod/i.test(navigator.userAgent); }
+  function isStandalone() {
+    return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  }
+  if (isIOS() && !isStandalone()) installBanner.style.display = 'block';
+
+  // Apps Script refuse les requêtes JSON classiques à cause du CORS préflight :
+  // on envoie en text/plain et Apps Script parse lui-même le JSON reçu.
+  async function callAppsScript(payload) {
+    return fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async function subscribeUser() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      statusEl.textContent = "Notifications push non supportées ici."; return;
+    }
+    if (isIOS() && !isStandalone()) {
+      statusEl.textContent = "Ajoute d'abord l'app à l'écran d'accueil (voir ci-dessus)."; return;
+    }
+    subBtn.disabled = true;
+    statusEl.textContent = "Demande d'autorisation...";
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      statusEl.textContent = "Permission refusée."; subBtn.disabled = false; return;
+    }
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+    });
+    const res = await callAppsScript({ action: 'subscribe', subscription });
+    statusEl.textContent = res.ok ? "✅ Notifications activées !" : "Erreur.";
+    if (!res.ok) subBtn.disabled = false;
+  }
+  subBtn.addEventListener('click', subscribeUser);
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('service-worker.js');
+  }
+
+  async function chargerFiches() {
+    const res = await fetch(`${APPS_SCRIPT_URL}?action=list_fiches`);
+    const fiches = await res.json();
+    const container = document.getElementById('fiches-list');
+    if (!fiches.length) {
+      container.innerHTML = '<div class="empty">Aucune fiche pour l\'instant.</div>';
+      return;
+    }
+
+    // Regroupement par matière : plusieurs cours peuvent appartenir à la même matière
+    const groupes = {};
+    fiches.forEach(f => {
+      const m = f.matiere || 'Sans matière';
+      if (!groupes[m]) groupes[m] = [];
+      groupes[m].push(f);
+    });
+
+    container.innerHTML = Object.entries(groupes).map(([matiere, fichesMatiere]) => `
+      <div class="matiere-groupe">
+        <div class="matiere-titre">
+          <span>${matiere}</span>
+          <span class="count">${fichesMatiere.length} fiche(s)</span>
+        </div>
+        ${fichesMatiere.map(f => `
+          <a class="fiche" href="fiche.html?id=${f.id}">
+            <div class="fiche-info"><div class="titre">${f.titre}</div></div>
+            <div class="fiche-badge ${f.statut === 'maitrisee' ? 'maitrisee' : ''}">
+              ${f.statut === 'maitrisee' ? '🏆 Maîtrisée' : (f.prochaine_revision ? `J${f.jour_j} · ${f.prochaine_revision}` : '—')}
+            </div>
+          </a>
+        `).join('')}
+      </div>
+    `).join('');
+  }
+
+  document.getElementById('add-btn').addEventListener('click', async () => {
+    const titre = document.getElementById('f-titre').value.trim();
+    if (!titre) { alert('Le titre est obligatoire.'); return; }
+    const payload = {
+      action: 'create_fiche',
+      titre,
+      matiere: document.getElementById('f-matiere').value.trim(),
+      url: document.getElementById('f-url').value.trim(),
+      contenu: document.getElementById('f-contenu').value.trim(),
+    };
+    const res = await callAppsScript(payload);
+    if (res.ok) {
+      document.getElementById('f-titre').value = '';
+      document.getElementById('f-matiere').value = '';
+      document.getElementById('f-url').value = '';
+      document.getElementById('f-contenu').value = '';
+      chargerFiches();
+    } else {
+      alert('Erreur lors de la création de la fiche.');
+    }
+  });
+
+  chargerFiches();
+</script>
+</body>
+</html>

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Détail fiche</title>
+<meta name="theme-color" content="#0f172a">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0f172a; color: #f1f5f9; padding: 20px; max-width: 480px; margin: 0 auto; }
+  a.back { color: #64748b; font-size: 0.85rem; text-decoration: none; }
+  h1 { font-size: 1.3rem; margin: 10px 0 4px; }
+  .matiere { color: #38bdf8; font-size: 0.85rem; margin-bottom: 16px; }
+  .badge-maitrisee { display: inline-block; background: #16a34a; color: white; font-size: 0.75rem;
+    padding: 4px 10px; border-radius: 20px; margin-bottom: 12px; }
+  .card { background: #1e293b; border-radius: 14px; padding: 16px; margin-bottom: 16px; }
+  .contenu { white-space: pre-wrap; line-height: 1.6; font-size: 0.9rem; }
+  a.lien { color: #38bdf8; font-size: 0.9rem; }
+  .revision-active h2 { font-size: 1rem; margin: 0 0 6px; }
+  .revision-active p { color: #94a3b8; font-size: 0.85rem; margin: 0 0 14px; }
+  .boutons { display: flex; gap: 10px; }
+  button { flex: 1; padding: 14px; border: none; border-radius: 10px; font-weight: 600;
+    font-size: 0.9rem; cursor: pointer; }
+  .btn-maitrise { background: #16a34a; color: white; }
+  .btn-non-maitrise { background: #f97316; color: white; }
+  button:disabled { opacity: 0.5; }
+  ul.planning { padding-left: 0; list-style: none; margin: 0; }
+  ul.planning li { display: flex; justify-content: space-between; padding: 8px 0;
+    border-bottom: 1px solid #334155; font-size: 0.85rem; color: #94a3b8; }
+  ul.planning li:last-child { border-bottom: none; }
+  .statut-fait { color: #16a34a; }
+  .statut-echec { color: #f97316; }
+  .statut-annulee { color: #64748b; text-decoration: line-through; }
+  .empty { text-align: center; color: #64748b; padding: 40px 0; }
+</style>
+</head>
+<body>
+  <a class="back" href="index.html">← Retour</a>
+  <div id="content" class="empty">Chargement...</div>
+
+<script>
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx0UEPG7ciaJs_HtIH9P7eJYzfR4YpEeU_0q_9ejJUvjmTHBO9QD6ce1jn8lcaW6wDM8g/exec";
+  const params = new URLSearchParams(window.location.search);
+  const ficheId = params.get('id');
+  let revisionActiveId = null;
+
+  async function callAppsScript(payload) {
+    return fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload)
+    });
+  }
+
+  function libelleResultat(r) {
+    if (!r.effectuee) return '⏳ à venir';
+    if (r.resultat === 'maitrise') return '<span class="statut-fait">✅ maîtrisé</span>';
+    if (r.resultat === 'non_maitrise') return '<span class="statut-echec">❌ pas encore</span>';
+    if (r.resultat === 'annulee') return '<span class="statut-annulee">annulée</span>';
+    return '✔️ faite';
+  }
+
+  async function charger() {
+    if (!ficheId) {
+      document.getElementById('content').innerHTML = '<div class="empty">Fiche non spécifiée.</div>';
+      return;
+    }
+
+    const res = await fetch(`${APPS_SCRIPT_URL}?action=fiche_detail&id=${ficheId}`);
+    const data = await res.json();
+
+    if (data.error) {
+      document.getElementById('content').innerHTML = `<div class="empty">${data.error}</div>`;
+      return;
+    }
+
+    revisionActiveId = data.revision_active ? data.revision_active.id : null;
+    const f = data.fiche;
+
+    const revisionsHtml = data.revisions.map(r =>
+      `<li><span>J${r.jour_j} — ${r.date_prevue}</span><span>${libelleResultat(r)}</span></li>`
+    ).join('');
+
+    let actionHtml = '';
+    if (f.statut === 'maitrisee') {
+      actionHtml = `<div class="badge-maitrisee">🏆 Fiche maîtrisée</div>`;
+    } else if (data.revision_active) {
+      actionHtml = `
+        <div class="card revision-active">
+          <h2>Révision J${data.revision_active.jour_j}</h2>
+          <p>As-tu maîtrisé cette notion ?</p>
+          <div class="boutons">
+            <button class="btn-maitrise" onclick="repondre('maitrise')">✅ Maîtrisé</button>
+            <button class="btn-non-maitrise" onclick="repondre('non_maitrise')">❌ Pas encore</button>
+          </div>
+        </div>`;
+    }
+
+    document.getElementById('content').innerHTML = `
+      <h1>${f.titre}</h1>
+      <div class="matiere">${f.matiere}</div>
+      ${actionHtml}
+      ${f.url ? `<p><a class="lien" href="${f.url}" target="_blank">🔗 Ouvrir la ressource liée</a></p>` : ''}
+      ${f.contenu ? `<div class="card"><div class="contenu">${f.contenu}</div></div>` : ''}
+      <div class="card">
+        <h2 style="font-size:1rem; margin-top:0;">Planning de révision</h2>
+        <ul class="planning">${revisionsHtml}</ul>
+      </div>
+    `;
+  }
+
+  async function repondre(resultat) {
+    if (!revisionActiveId) return;
+    document.querySelectorAll('.boutons button').forEach(b => b.disabled = true);
+    await callAppsScript({
+      action: 'mark_review',
+      fiche_id: Number(ficheId),
+      review_id: revisionActiveId,
+      resultat
+    });
+    charger();
+  }
+
+  charger();
+</script>
+</body>
+</html>

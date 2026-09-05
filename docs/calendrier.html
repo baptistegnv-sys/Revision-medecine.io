@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Calendrier des révisions</title>
+<meta name="theme-color" content="#0f172a">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0f172a; color: #f1f5f9; padding: 20px; max-width: 480px; margin: 0 auto; }
+  a.back { color: #64748b; font-size: 0.85rem; text-decoration: none; }
+  h1 { font-size: 1.2rem; margin: 10px 0 16px; }
+
+  .nav-mois { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .nav-mois button { background: #1e293b; border: none; color: #38bdf8; font-size: 1.1rem;
+    padding: 8px 14px; border-radius: 8px; cursor: pointer; }
+  .nav-mois .libelle { font-weight: 600; text-transform: capitalize; }
+
+  .grille { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 20px; }
+  .jour-nom { text-align: center; font-size: 0.7rem; color: #64748b; padding-bottom: 4px; }
+  .case { aspect-ratio: 1; background: #1e293b; border-radius: 8px; padding: 4px;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    font-size: 0.75rem; cursor: pointer; position: relative; }
+  .case.vide { background: transparent; cursor: default; }
+  .case.aujourdhui { border: 1px solid #38bdf8; }
+  .case.selectionne { background: #334155; }
+  .points { display: flex; gap: 2px; margin-top: 4px; flex-wrap: wrap; justify-content: center; }
+  .point { width: 6px; height: 6px; border-radius: 50%; }
+  .point-a-venir { background: #38bdf8; }
+  .point-maitrise { background: #16a34a; }
+  .point-non-maitrise { background: #f97316; }
+
+  h2 { font-size: 0.95rem; margin: 0 0 10px; }
+  .fiche-jour { background: #1e293b; border-radius: 10px; padding: 12px; margin-bottom: 8px;
+    text-decoration: none; color: inherit; display: block; }
+  .fiche-jour .titre { font-weight: 600; font-size: 0.85rem; }
+  .fiche-jour .info { color: #94a3b8; font-size: 0.75rem; }
+  .empty { color: #64748b; font-size: 0.85rem; text-align: center; padding: 20px 0; }
+</style>
+</head>
+<body>
+  <a class="back" href="index.html">← Retour</a>
+  <h1>📅 Calendrier des révisions</h1>
+
+  <div class="nav-mois">
+    <button onclick="changerMois(-1)">◀</button>
+    <span class="libelle" id="libelle-mois"></span>
+    <button onclick="changerMois(1)">▶</button>
+  </div>
+
+  <div class="grille" id="jours-noms"></div>
+  <div class="grille" id="grille-calendrier"></div>
+
+  <div id="detail-jour"></div>
+
+<script>
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx0UEPG7ciaJs_HtIH9P7eJYzfR4YpEeU_0q_9ejJUvjmTHBO9QD6ce1jn8lcaW6wDM8g/exec";
+  const NOMS_MOIS = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+  const NOMS_JOURS = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
+
+  let dateAffichee = new Date();
+  let toutesLesRevisions = [];
+  let jourSelectionne = null;
+
+  function isoDate(d) {
+    return d.toISOString().split('T')[0];
+  }
+
+  async function chargerRevisions() {
+    const res = await fetch(`${APPS_SCRIPT_URL}?action=all_revisions`);
+    toutesLesRevisions = await res.json();
+    dessinerCalendrier();
+  }
+
+  function changerMois(delta) {
+    dateAffichee.setMonth(dateAffichee.getMonth() + delta);
+    jourSelectionne = null;
+    dessinerCalendrier();
+  }
+
+  document.getElementById('jours-noms').innerHTML =
+    NOMS_JOURS.map(j => `<div class="jour-nom">${j}</div>`).join('');
+
+  function dessinerCalendrier() {
+    const annee = dateAffichee.getFullYear();
+    const mois = dateAffichee.getMonth();
+    document.getElementById('libelle-mois').textContent = `${NOMS_MOIS[mois]} ${annee}`;
+
+    const premierJourMois = new Date(annee, mois, 1);
+    // décalage pour que la semaine commence Lundi (getDay: 0=dimanche)
+    const decalage = (premierJourMois.getDay() + 6) % 7;
+    const nbJoursMois = new Date(annee, mois + 1, 0).getDate();
+    const today = isoDate(new Date());
+
+    const revisionsParJour = {};
+    toutesLesRevisions.forEach(r => {
+      if (!revisionsParJour[r.date_prevue]) revisionsParJour[r.date_prevue] = [];
+      revisionsParJour[r.date_prevue].push(r);
+    });
+
+    let html = '';
+    for (let i = 0; i < decalage; i++) html += '<div class="case vide"></div>';
+
+    for (let jour = 1; jour <= nbJoursMois; jour++) {
+      const dateStr = isoDate(new Date(annee, mois, jour));
+      const revisions = (revisionsParJour[dateStr] || []).filter(r => r.resultat !== 'annulee');
+
+      const points = revisions.slice(0, 4).map(r => {
+        let classe = 'point-a-venir';
+        if (r.resultat === 'maitrise') classe = 'point-maitrise';
+        else if (r.resultat === 'non_maitrise') classe = 'point-non-maitrise';
+        return `<span class="point ${classe}"></span>`;
+      }).join('');
+
+      const classesExtra = [
+        dateStr === today ? 'aujourdhui' : '',
+        dateStr === jourSelectionne ? 'selectionne' : ''
+      ].join(' ');
+
+      html += `<div class="case ${classesExtra}" onclick="selectionnerJour('${dateStr}')">
+                 ${jour}<div class="points">${points}</div>
+               </div>`;
+    }
+
+    document.getElementById('grille-calendrier').innerHTML = html;
+    afficherDetailJour(revisionsParJour);
+  }
+
+  function selectionnerJour(dateStr) {
+    jourSelectionne = (jourSelectionne === dateStr) ? null : dateStr;
+    dessinerCalendrier();
+  }
+
+  function afficherDetailJour(revisionsParJour) {
+    const container = document.getElementById('detail-jour');
+    if (!jourSelectionne) { container.innerHTML = ''; return; }
+
+    const revisions = (revisionsParJour[jourSelectionne] || []).filter(r => r.resultat !== 'annulee');
+    if (!revisions.length) {
+      container.innerHTML = `<h2>${jourSelectionne}</h2><div class="empty">Aucune révision ce jour-là.</div>`;
+      return;
+    }
+
+    container.innerHTML = `<h2>${jourSelectionne}</h2>` + revisions.map(r => `
+      <a class="fiche-jour" href="fiche.html?id=${r.fiche_id}">
+        <div class="titre">${r.titre}</div>
+        <div class="info">${r.matiere || ''} · J${r.jour_j}</div>
+      </a>
+    `).join('');
+  }
+
+  chargerRevisions();
+</script>
+</body>
+</html>
